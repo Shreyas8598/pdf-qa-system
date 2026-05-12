@@ -2,26 +2,16 @@ import streamlit as st
 import os
 from rag_engine import RAGEngine
 
-# ── Page Config ───────────────────────────────────────
 st.set_page_config(
     page_title="PDF Question Answering System",
     page_icon="📄",
     layout="wide"
 )
 
-# ── Styles ────────────────────────────────────────────
 st.markdown("""
 <style>
-    .main-title {
-        font-size: 2rem;
-        font-weight: 700;
-        color: #1a1a2e;
-    }
-    .subtitle {
-        color: #555;
-        font-size: 0.95rem;
-        margin-bottom: 1.5rem;
-    }
+    .main-title { font-size: 2rem; font-weight: 700; color: #1a1a2e; }
+    .subtitle { color: #555; font-size: 0.95rem; margin-bottom: 1.5rem; }
     .answer-box {
         background: #f0f4ff;
         border-left: 4px solid #4361ee;
@@ -62,7 +52,6 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# ── Session State ─────────────────────────────────────
 if "rag" not in st.session_state:
     st.session_state.rag = None
 if "chat_history" not in st.session_state:
@@ -70,7 +59,6 @@ if "chat_history" not in st.session_state:
 if "docs_loaded" not in st.session_state:
     st.session_state.docs_loaded = False
 
-# ── Header ────────────────────────────────────────────
 st.markdown('<p class="main-title">📄 Offline PDF Question Answering System</p>', unsafe_allow_html=True)
 st.markdown(
     '<p class="subtitle">'
@@ -81,10 +69,17 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# ── Sidebar — Upload ───────────────────────────────────
 with st.sidebar:
     st.header("📁 Upload Documents")
-    st.caption("Upload one or more PDF files to begin querying.")
+
+    groq_api_key = st.text_input(
+        "🔑 Groq API Key",
+        type="password",
+        placeholder="gsk_...",
+        help="Get free key from console.groq.com"
+    )
+
+    st.markdown("---")
 
     uploaded_files = st.file_uploader(
         "Choose PDF files",
@@ -92,34 +87,32 @@ with st.sidebar:
         accept_multiple_files=True
     )
 
-    chunk_size = st.slider("Chunk Size (tokens)", 200, 800, 400, 50,
-                           help="Smaller chunks = more precise answers. Larger = more context.")
-    top_k = st.slider("Results to retrieve (Top-K)", 1, 8, 4,
-                      help="How many chunks to pull before generating the answer.")
+    chunk_size = st.slider("Chunk Size (tokens)", 200, 800, 400, 50)
+    top_k = st.slider("Results to retrieve (Top-K)", 1, 8, 4)
 
     process_btn = st.button("⚙️ Process Documents", use_container_width=True, type="primary")
 
     if process_btn and uploaded_files:
-        with st.spinner("Reading & indexing documents..."):
-            # Save uploads to temp folder
-            os.makedirs("temp_docs", exist_ok=True)
-            saved_paths = []
-            for f in uploaded_files:
-                path = f"temp_docs/{f.name}"
-                with open(path, "wb") as out:
-                    out.write(f.read())
-                saved_paths.append(path)
+        if not groq_api_key:
+            st.error("Please enter your Groq API key first.")
+        else:
+            with st.spinner("Reading & indexing documents..."):
+                os.makedirs("temp_docs", exist_ok=True)
+                saved_paths = []
+                for f in uploaded_files:
+                    path = f"temp_docs/{f.name}"
+                    with open(path, "wb") as out:
+                        out.write(f.read())
+                    saved_paths.append(path)
 
-            # Build RAG engine
-            groq_api_key = st.session_state.get("groq_api_key", "")
-            engine = RAGEngine(chunk_size=chunk_size, top_k=top_k, api_key=groq_api_key)
-            engine.load_documents(saved_paths)
+                engine = RAGEngine(chunk_size=chunk_size, top_k=top_k, api_key=groq_api_key)
+                engine.load_documents(saved_paths)
 
-            st.session_state.rag = engine
-            st.session_state.docs_loaded = True
-            st.session_state.chat_history = []
+                st.session_state.rag = engine
+                st.session_state.docs_loaded = True
+                st.session_state.chat_history = []
 
-        st.success(f"✅ {len(uploaded_files)} document(s) indexed successfully!")
+            st.success(f"✅ {len(uploaded_files)} document(s) indexed successfully!")
 
     if st.session_state.docs_loaded:
         st.markdown("---")
@@ -131,12 +124,10 @@ with st.sidebar:
 
     st.markdown("---")
     st.markdown("**Stack**")
-    st.caption("LangChain · FAISS · HuggingFace\nStreamlit · PyMuPDF · pdfplumber")
+    st.caption("LangChain · FAISS · Groq (LLaMA3)\nStreamlit · PyMuPDF · pdfplumber")
 
-# ── Main Panel ────────────────────────────────────────
 if not st.session_state.docs_loaded:
-    st.info("👈 Upload PDF documents in the sidebar and click **Process Documents** to begin.")
-
+    st.info("👈 Enter your Groq API key, upload PDF documents, and click **Process Documents** to begin.")
     col1, col2, col3 = st.columns(3)
     with col1:
         st.markdown("### 🔒 100% Offline")
@@ -147,17 +138,17 @@ if not st.session_state.docs_loaded:
     with col3:
         st.markdown("### ⚡ Fast Retrieval")
         st.caption("FAISS vector index enables sub-second similarity search.")
-
 else:
-    # Chat interface
     st.markdown("### 💬 Ask a Question")
 
-    # Display chat history
     for entry in st.session_state.chat_history:
         with st.chat_message("user"):
             st.write(entry["question"])
         with st.chat_message("assistant"):
-            st.success(entry["answer"])
+            st.markdown(
+                f'<div class="answer-box">{entry["answer"]}</div>',
+                unsafe_allow_html=True
+            )
             if entry.get("sources"):
                 with st.expander("📎 Source chunks used"):
                     for i, src in enumerate(entry["sources"], 1):
@@ -167,21 +158,18 @@ else:
                             unsafe_allow_html=True
                         )
 
-    # Input box
     question = st.chat_input("Type your question about the uploaded documents...")
 
     if question:
         with st.chat_message("user"):
             st.write(question)
-
         with st.chat_message("assistant"):
-            with st.spinner("Searching documents..."):
+            with st.spinner("Searching & generating answer..."):
                 result = st.session_state.rag.query(question)
-
-            answer = result["answer"]
-            if not answer:
-                answer = "The model could not generate an answer. Try rephrasing your question."
-            st.success(answer)
+            st.markdown(
+                f'<div class="answer-box">{result["answer"]}</div>',
+                unsafe_allow_html=True
+            )
             if result.get("sources"):
                 with st.expander("📎 Source chunks used"):
                     for i, src in enumerate(result["sources"], 1):
